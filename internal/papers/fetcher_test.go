@@ -4,17 +4,22 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 // mockFetcher is a test double for SourceFetcher.
 type mockFetcher struct {
-	papers []Paper
-	err    error
+	papers  []Paper
+	err     error
+	callCnt *atomic.Int32
 }
 
 func (m *mockFetcher) Fetch(_ context.Context, topic string) ([]Paper, error) {
+	if m.callCnt != nil {
+		m.callCnt.Add(1)
+	}
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -31,7 +36,7 @@ func makePaper(title, source string) Paper {
 }
 
 func TestFetcher_CombinesMultipleSources(t *testing.T) {
-	f := &Fetcher{
+	f := &fetcher{
 		sources: map[string][]SourceFetcher{
 			"TEST": {
 				&mockFetcher{papers: []Paper{makePaper("Paper A", "arxiv")}},
@@ -51,7 +56,7 @@ func TestFetcher_CombinesMultipleSources(t *testing.T) {
 
 func TestFetcher_DeduplicatesByTitle(t *testing.T) {
 	duplicate := makePaper("Same Title", "arxiv")
-	f := &Fetcher{
+	f := &fetcher{
 		sources: map[string][]SourceFetcher{
 			"TEST": {
 				&mockFetcher{papers: []Paper{duplicate}},
@@ -70,7 +75,7 @@ func TestFetcher_DeduplicatesByTitle(t *testing.T) {
 }
 
 func TestFetcher_SourceErrorSkipped(t *testing.T) {
-	f := &Fetcher{
+	f := &fetcher{
 		sources: map[string][]SourceFetcher{
 			"TEST": {
 				&mockFetcher{err: errors.New("source down")},
@@ -107,7 +112,7 @@ func TestFetcher_UnknownTopicError(t *testing.T) {
 }
 
 func TestFetcher_TopicCaseInsensitive(t *testing.T) {
-	f := &Fetcher{
+	f := &fetcher{
 		sources: map[string][]SourceFetcher{
 			"AI": {
 				&mockFetcher{papers: []Paper{makePaper("AI Paper", "arxiv")}},
@@ -144,7 +149,7 @@ func TestFetcher_DeduplicationKeyNormalisesSpaces(t *testing.T) {
 }
 
 func TestFetcher_AllSourcesFail_ReturnsEmpty(t *testing.T) {
-	f := &Fetcher{
+	f := &fetcher{
 		sources: map[string][]SourceFetcher{
 			"TEST": {
 				&mockFetcher{err: errors.New("err1")},
@@ -170,5 +175,39 @@ func TestFetcher_Topics(t *testing.T) {
 	}
 	if !slices.Contains(topics, "AI") {
 		t.Error("expected AI in topics list")
+	}
+}
+
+// TestFetcher_ConcurrentFetch_AllSourcesRun verifies that every source is called
+// when FetchTopic runs sources concurrently.
+func TestFetcher_ConcurrentFetch_AllSourcesRun(t *testing.T) {
+	var cnt1, cnt2, cnt3 atomic.Int32
+
+	f := &fetcher{
+		sources: map[string][]SourceFetcher{
+			"TEST": {
+				&mockFetcher{papers: []Paper{makePaper("Paper 1", "src1")}, callCnt: &cnt1},
+				&mockFetcher{papers: []Paper{makePaper("Paper 2", "src2")}, callCnt: &cnt2},
+				&mockFetcher{papers: []Paper{makePaper("Paper 3", "src3")}, callCnt: &cnt3},
+			},
+		},
+	}
+
+	papers, err := f.FetchTopic(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cnt1.Load() != 1 {
+		t.Errorf("source 1 expected 1 call, got %d", cnt1.Load())
+	}
+	if cnt2.Load() != 1 {
+		t.Errorf("source 2 expected 1 call, got %d", cnt2.Load())
+	}
+	if cnt3.Load() != 1 {
+		t.Errorf("source 3 expected 1 call, got %d", cnt3.Load())
+	}
+	if len(papers) != 3 {
+		t.Errorf("expected 3 papers from 3 sources, got %d", len(papers))
 	}
 }

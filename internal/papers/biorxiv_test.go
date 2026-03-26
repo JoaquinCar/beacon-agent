@@ -133,6 +133,23 @@ func TestBioRxivFetcher_NonOKStatus(t *testing.T) {
 	}
 }
 
+func TestBioRxivFetcher_RateLimited(t *testing.T) {
+	for _, code := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+		}))
+
+		f := NewBioRxivFetcher("biorxiv")
+		f.apiBase = srv.URL
+
+		_, err := f.Fetch(context.Background(), "BIO")
+		srv.Close()
+		if err == nil {
+			t.Errorf("status %d: expected rate-limit error", code)
+		}
+	}
+}
+
 func TestSplitAuthors(t *testing.T) {
 	cases := []struct {
 		input string

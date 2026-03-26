@@ -80,6 +80,23 @@ func TestHuggingFaceFetcher_NonOKStatus(t *testing.T) {
 	}
 }
 
+func TestHuggingFaceFetcher_RateLimited(t *testing.T) {
+	for _, code := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+		}))
+
+		f := NewHuggingFaceFetcher()
+		f.apiBase = srv.URL
+
+		_, err := f.Fetch(context.Background(), "AI")
+		srv.Close()
+		if err == nil {
+			t.Errorf("status %d: expected rate-limit error", code)
+		}
+	}
+}
+
 func TestHuggingFaceFetcher_MalformedJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
