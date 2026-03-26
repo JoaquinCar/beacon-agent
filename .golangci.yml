@@ -1,0 +1,27 @@
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - goimports
+    - revive
+
+linters-settings:
+  errcheck:
+    # Ignore unchecked Write calls in test HTTP handlers
+    exclude-functions:
+      - (net/http.ResponseWriter).Write
+
+  revive:
+    rules:
+      - name: exported
+        disabled: true  # don't require doc comments on all exported symbols yet
+
+issues:
+  exclude-rules:
+    # Test files get looser rules
+    - path: _test\.go
+      linters:
+        - errcheck
+        - revive
