@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -36,7 +37,11 @@ type HuggingFaceFetcher struct {
 }
 
 // NewHuggingFaceFetcher creates a HuggingFace daily papers fetcher.
+// Panics if the production API base URL is not HTTPS (caught at program init).
 func NewHuggingFaceFetcher() *HuggingFaceFetcher {
+	if err := validateHTTPS(hfAPIBase); err != nil {
+		panic("huggingface: " + err.Error())
+	}
 	return &HuggingFaceFetcher{
 		httpClient: &http.Client{Timeout: 15 * time.Second},
 		apiBase:    hfAPIBase,
@@ -45,6 +50,8 @@ func NewHuggingFaceFetcher() *HuggingFaceFetcher {
 
 // Fetch retrieves today's papers from HuggingFace Papers.
 func (f *HuggingFaceFetcher) Fetch(ctx context.Context, topic string) ([]Paper, error) {
+	slog.DebugContext(ctx, "huggingface: fetching papers")
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.apiBase, nil)
 	if err != nil {
 		return nil, fmt.Errorf("huggingface: build request: %w", err)
@@ -52,12 +59,19 @@ func (f *HuggingFaceFetcher) Fetch(ctx context.Context, topic string) ([]Paper, 
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := f.httpClient.Do(req)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("huggingface: request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// proceed
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return nil, fmt.Errorf("huggingface: rate limited or unavailable (status %d)", resp.StatusCode)
+	default:
 		return nil, fmt.Errorf("huggingface: unexpected status %d", resp.StatusCode)
 	}
 
@@ -98,5 +112,6 @@ func (f *HuggingFaceFetcher) Fetch(ctx context.Context, topic string) ([]Paper, 
 		})
 	}
 
+	slog.DebugContext(ctx, "huggingface: fetched papers", "count", len(papers))
 	return papers, nil
 }

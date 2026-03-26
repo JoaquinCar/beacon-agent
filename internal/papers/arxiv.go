@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -40,7 +41,11 @@ type ArXivFetcher struct {
 }
 
 // NewArXivFetcher creates a fetcher for the given ArXiv category (e.g. "cs.AI").
+// Panics if the production API base URL is not HTTPS (caught at program init).
 func NewArXivFetcher(category string) *ArXivFetcher {
+	if err := validateHTTPS(arxivAPIBase); err != nil {
+		panic("arxiv: " + err.Error())
+	}
 	return &ArXivFetcher{
 		httpClient: &http.Client{Timeout: 15 * time.Second},
 		apiBase:    arxivAPIBase,
@@ -52,6 +57,8 @@ func NewArXivFetcher(category string) *ArXivFetcher {
 // Fetch retrieves the most recent papers in the configured category.
 // The topic parameter is recorded on each returned Paper for tagging.
 func (f *ArXivFetcher) Fetch(ctx context.Context, topic string) ([]Paper, error) {
+	slog.DebugContext(ctx, "arxiv: fetching papers", "category", f.category)
+
 	params := url.Values{}
 	params.Set("search_query", "cat:"+f.category)
 	params.Set("start", "0")
@@ -65,12 +72,19 @@ func (f *ArXivFetcher) Fetch(ctx context.Context, topic string) ([]Paper, error)
 	}
 
 	resp, err := f.httpClient.Do(req)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("arxiv: request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// proceed
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return nil, fmt.Errorf("arxiv: rate limited or unavailable (status %d)", resp.StatusCode)
+	default:
 		return nil, fmt.Errorf("arxiv: unexpected status %d", resp.StatusCode)
 	}
 
@@ -107,5 +121,6 @@ func (f *ArXivFetcher) Fetch(ctx context.Context, topic string) ([]Paper, error)
 		})
 	}
 
+	slog.DebugContext(ctx, "arxiv: fetched papers", "count", len(papers))
 	return papers, nil
 }

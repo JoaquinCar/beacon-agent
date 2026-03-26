@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -34,7 +35,11 @@ type BioRxivFetcher struct {
 }
 
 // NewBioRxivFetcher creates a fetcher for the given server ("biorxiv" or "medrxiv").
+// Panics if the production API base URL is not HTTPS (caught at program init).
 func NewBioRxivFetcher(server string) *BioRxivFetcher {
+	if err := validateHTTPS(biorxivAPIBase); err != nil {
+		panic("biorxiv: " + err.Error())
+	}
 	return &BioRxivFetcher{
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 		apiBase:    biorxivAPIBase,
@@ -46,6 +51,8 @@ func NewBioRxivFetcher(server string) *BioRxivFetcher {
 
 // Fetch retrieves preprints submitted in the last daysBack days.
 func (f *BioRxivFetcher) Fetch(ctx context.Context, topic string) ([]Paper, error) {
+	slog.DebugContext(ctx, "biorxiv: fetching papers", "server", f.server)
+
 	now := time.Now().UTC()
 	start := now.AddDate(0, 0, -f.daysBack)
 	interval := start.Format("2006-01-02") + "/" + now.Format("2006-01-02")
@@ -58,12 +65,19 @@ func (f *BioRxivFetcher) Fetch(ctx context.Context, topic string) ([]Paper, erro
 	}
 
 	resp, err := f.httpClient.Do(req)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("biorxiv: request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// proceed
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return nil, fmt.Errorf("biorxiv: rate limited or unavailable (status %d)", resp.StatusCode)
+	default:
 		return nil, fmt.Errorf("biorxiv: unexpected status %d", resp.StatusCode)
 	}
 
@@ -99,10 +113,12 @@ func (f *BioRxivFetcher) Fetch(ctx context.Context, topic string) ([]Paper, erro
 			Topic:    topic,
 			Date:     pub,
 			URL:      "https://doi.org/" + p.DOI,
+			DOI:      p.DOI,
 			Abstract: strings.TrimSpace(p.Abstract),
 		})
 	}
 
+	slog.DebugContext(ctx, "biorxiv: fetched papers", "count", len(papers))
 	return papers, nil
 }
 

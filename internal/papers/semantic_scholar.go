@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -44,7 +45,11 @@ type SemanticScholarFetcher struct {
 }
 
 // NewSemanticScholarFetcher creates a fetcher with the given search query.
+// Panics if the production API base URL is not HTTPS (caught at program init).
 func NewSemanticScholarFetcher(query string) *SemanticScholarFetcher {
+	if err := validateHTTPS(ssAPIBase); err != nil {
+		panic("semantic_scholar: " + err.Error())
+	}
 	return &SemanticScholarFetcher{
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 		apiBase:    ssAPIBase,
@@ -55,6 +60,8 @@ func NewSemanticScholarFetcher(query string) *SemanticScholarFetcher {
 
 // Fetch queries Semantic Scholar for papers matching the configured query.
 func (f *SemanticScholarFetcher) Fetch(ctx context.Context, topic string) ([]Paper, error) {
+	slog.DebugContext(ctx, "semantic_scholar: fetching papers", "query", f.query)
+
 	params := url.Values{}
 	params.Set("query", f.query)
 	params.Set("fields", "title,authors,year,externalIds,abstract")
@@ -66,12 +73,19 @@ func (f *SemanticScholarFetcher) Fetch(ctx context.Context, topic string) ([]Pap
 	}
 
 	resp, err := f.httpClient.Do(req)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("semantic_scholar: request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// proceed
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return nil, fmt.Errorf("semantic_scholar: rate limited or unavailable (status %d)", resp.StatusCode)
+	default:
 		return nil, fmt.Errorf("semantic_scholar: unexpected status %d", resp.StatusCode)
 	}
 
@@ -115,5 +129,6 @@ func (f *SemanticScholarFetcher) Fetch(ctx context.Context, topic string) ([]Pap
 		})
 	}
 
+	slog.DebugContext(ctx, "semantic_scholar: fetched papers", "count", len(papers))
 	return papers, nil
 }
