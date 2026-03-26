@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sync"
 
 	"github.com/joako/beacon/internal/papers"
 )
@@ -13,22 +14,28 @@ type Store interface {
 	Drain(ctx context.Context) ([]papers.Paper, error)
 }
 
-// MemoryStore is an in-memory implementation of Store.
-// It will be fully implemented in Week 3.
-type MemoryStore struct {
+// memoryStore is a thread-safe in-memory implementation of Store.
+type memoryStore struct {
+	mu     sync.Mutex
 	papers []papers.Paper
 }
 
-func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{}
+// NewMemoryStore returns a new in-memory Store.
+func NewMemoryStore() Store {
+	return &memoryStore{}
 }
 
-func (s *MemoryStore) Save(_ context.Context, ps []papers.Paper) error {
+func (s *memoryStore) Save(_ context.Context, ps []papers.Paper) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.papers = append(s.papers, ps...)
 	return nil
 }
 
-func (s *MemoryStore) Drain(_ context.Context) ([]papers.Paper, error) {
+// Drain returns all stored papers and clears the store atomically.
+func (s *memoryStore) Drain(_ context.Context) ([]papers.Paper, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	out := s.papers
 	s.papers = nil
 	return out, nil
