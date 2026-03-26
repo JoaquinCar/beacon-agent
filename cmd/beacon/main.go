@@ -119,7 +119,6 @@ func runPaperFetch(ctx context.Context, topic string) error {
 	return nil
 }
 
-
 func formatDate(p papers.Paper) string {
 	if p.Date.IsZero() {
 		return "unknown"
