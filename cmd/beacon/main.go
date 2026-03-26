@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -15,6 +16,8 @@ import (
 func main() {
 	cmd := flag.String("cmd", "run", "Command to execute: mood | fetch | run")
 	topic := flag.String("topic", "AI", "Topic for --cmd=fetch (AI, HEALTHCARE, BCI, CV, BIO, ANTHROPIC)")
+	limit := flag.Int("limit", 0, "Max papers to return for --cmd=fetch (0 = unlimited)")
+	asJSON := flag.Bool("json", false, "Output papers as JSON for --cmd=fetch")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -34,7 +37,7 @@ func main() {
 			os.Exit(2)
 		}
 	case "fetch":
-		if err := runPaperFetch(ctx, *topic); err != nil {
+		if err := runPaperFetch(ctx, *topic, *limit, *asJSON); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(2)
 		}
@@ -80,11 +83,20 @@ func runMoodCheck(ctx context.Context, cfg *config.Config) error {
 }
 
 // runPaperFetch fetches papers for the given topic and prints them to stdout.
-func runPaperFetch(ctx context.Context, topic string) error {
+// limit=0 means unlimited. asJSON=true outputs a JSON array.
+func runPaperFetch(ctx context.Context, topic string, limit int, asJSON bool) error {
 	fetcher := papers.NewFetcher()
 	results, err := fetcher.FetchTopic(ctx, topic)
 	if err != nil {
 		return fmt.Errorf("paper fetch: %w", err)
+	}
+
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+
+	if asJSON {
+		return printJSON(results)
 	}
 
 	fmt.Printf("=== Beacon / paper fetch — topic: %s ===\n\n", topic)
@@ -116,6 +128,15 @@ func runPaperFetch(ctx context.Context, topic string) error {
 	}
 
 	fmt.Printf("Total: %d papers\n", len(results))
+	return nil
+}
+
+func printJSON(results []papers.Paper) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(results); err != nil {
+		return fmt.Errorf("json encode: %w", err)
+	}
 	return nil
 }
 
