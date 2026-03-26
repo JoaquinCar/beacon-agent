@@ -1,4 +1,4 @@
-.PHONY: run build test lint dry-run test-mood paper-fetch
+.PHONY: run build test lint fmt dry-run test-mood paper-fetch
 
 # Run the scheduler (default command)
 run:
@@ -11,6 +11,10 @@ build:
 # Run all tests with race detector
 test:
 	go test ./... -race
+
+# Format code (run before committing)
+fmt:
+	gofmt -w $$(find . -name "*.go" -not -path "./.claude/*")
 
 # Run linter
 lint:
