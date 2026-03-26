@@ -24,10 +24,10 @@ func (m MoodLevel) String() string {
 
 // Track holds data about the currently playing Spotify track.
 type Track struct {
-	ID      string
-	Title   string
-	Artist  string
-	Genres  []string
+	ID     string
+	Title  string
+	Artist string
+	Genres []string
 	// TokenExpiresIn is the number of seconds until the OAuth access token expires.
 	TokenExpiresIn int
 	// IsRecentlyPlayed is true when nothing is currently active and the track

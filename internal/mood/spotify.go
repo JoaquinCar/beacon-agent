@@ -30,8 +30,8 @@ type Client struct {
 	clientID     string
 	clientSecret string
 	refreshToken string
-	apiBase      string // overrideable for tests; defaults to spotifyAPIBase
-	tokenURL     string // overrideable for tests; defaults to spotifyTokenURL
+	apiBase      string        // overrideable for tests; defaults to spotifyAPIBase
+	tokenURL     string        // overrideable for tests; defaults to spotifyTokenURL
 	lastfm       *lastFMClient // optional genre fallback
 
 	mu          sync.RWMutex
