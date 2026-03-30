@@ -57,6 +57,7 @@ func (f *HuggingFaceFetcher) Fetch(ctx context.Context, topic string) ([]Paper, 
 		return nil, fmt.Errorf("huggingface: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "Beacon/1.0 (research aggregator)")
 
 	resp, err := f.httpClient.Do(req)
 	if resp != nil {

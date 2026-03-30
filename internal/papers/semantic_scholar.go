@@ -71,6 +71,7 @@ func (f *SemanticScholarFetcher) Fetch(ctx context.Context, topic string) ([]Pap
 	if err != nil {
 		return nil, fmt.Errorf("semantic_scholar: build request: %w", err)
 	}
+	req.Header.Set("User-Agent", "Beacon/1.0 (research aggregator)")
 
 	resp, err := f.httpClient.Do(req)
 	if resp != nil {

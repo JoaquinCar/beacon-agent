@@ -63,6 +63,7 @@ func (f *BioRxivFetcher) Fetch(ctx context.Context, topic string) ([]Paper, erro
 	if err != nil {
 		return nil, fmt.Errorf("biorxiv: build request: %w", err)
 	}
+	req.Header.Set("User-Agent", "Beacon/1.0 (research aggregator)")
 
 	resp, err := f.httpClient.Do(req)
 	if resp != nil {
