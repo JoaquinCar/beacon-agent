@@ -23,8 +23,8 @@ const (
 	maxTokensSummary = 600  // HIGH_BPM: 5–8 lines
 	maxTokensFull    = 1500 // NORMAL: structured analysis
 
-	maxRetries  = 3
-	retryBase   = 200 * time.Millisecond
+	maxRetries   = 3
+	retryBase    = 200 * time.Millisecond
 	defaultDelay = 200 * time.Millisecond // between papers — never concurrent
 )
 

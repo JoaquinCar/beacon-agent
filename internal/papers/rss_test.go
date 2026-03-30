@@ -242,7 +242,7 @@ func TestStripHTML(t *testing.T) {
 
 func TestParseRSSDate(t *testing.T) {
 	tests := []struct {
-		input   string
+		input    string
 		wantZero bool
 	}{
 		{"Mon, 10 Mar 2025 09:00:00 +0000", false},
