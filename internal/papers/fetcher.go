@@ -43,6 +43,11 @@ func NewFetcher() Fetcher {
 				NewArXivFetcher("cs.AI"),
 				NewHuggingFaceFetcher(),
 			},
+			"BLOGS": {
+				NewRSSFetcher("https://simonwillison.net/atom/everything/", "simonwillison"),
+				NewRSSFetcher("https://towardsdatascience.com/feed", "towardsdatascience"),
+				NewRSSFetcher("https://radicaldatascience.wordpress.com/feed/", "radicaldatascience"),
+			},
 		},
 	}
 }
@@ -116,6 +121,34 @@ func (f *fetcher) Topics() []string {
 func deduplicationKey(p Paper) string {
 	return strings.ToLower(strings.ReplaceAll(p.Title, " ", ""))
 }
+
+// limitedFetcher wraps a Fetcher and caps the total papers returned per FetchTopic call.
+type limitedFetcher struct {
+	inner Fetcher
+	limit int
+}
+
+// NewLimitedFetcher wraps f and returns at most limit papers per FetchTopic call.
+// If limit <= 0 the wrapper is a no-op pass-through.
+func NewLimitedFetcher(f Fetcher, limit int) Fetcher {
+	if limit <= 0 {
+		return f
+	}
+	return &limitedFetcher{inner: f, limit: limit}
+}
+
+func (l *limitedFetcher) FetchTopic(ctx context.Context, topic string) ([]Paper, error) {
+	ps, err := l.inner.FetchTopic(ctx, topic)
+	if err != nil {
+		return nil, err
+	}
+	if len(ps) > l.limit {
+		ps = ps[:l.limit]
+	}
+	return ps, nil
+}
+
+func (l *limitedFetcher) Topics() []string { return l.inner.Topics() }
 
 // UnknownTopicError is returned when FetchTopic receives a topic key that has
 // no registered sources.
