@@ -8,16 +8,21 @@ import (
 	"os"
 	"strings"
 
+	"github.com/joako/beacon/internal/briefing"
 	"github.com/joako/beacon/internal/config"
+	"github.com/joako/beacon/internal/delivery"
 	"github.com/joako/beacon/internal/mood"
 	"github.com/joako/beacon/internal/papers"
+	"github.com/joako/beacon/internal/scheduler"
 )
 
 func main() {
-	cmd := flag.String("cmd", "run", "Command to execute: mood | fetch | run")
+	cmd := flag.String("cmd", "run", "Command to execute: mood | fetch | run | dry-run")
 	topic := flag.String("topic", "AI", "Topic for --cmd=fetch (AI, HEALTHCARE, BCI, CV, BIO, ANTHROPIC)")
 	limit := flag.Int("limit", 0, "Max papers to return for --cmd=fetch (0 = unlimited)")
 	asJSON := flag.Bool("json", false, "Output papers as JSON for --cmd=fetch")
+	hour := flag.Int("hour", 9, "Hour to simulate for --cmd=dry-run (9 or 21)")
+	dryLimit := flag.Int("papers", 3, "Max papers to process for --cmd=dry-run (default 3)")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -41,8 +46,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(2)
 		}
-	default:
-		fmt.Println("scheduler: not implemented yet (Week 4)")
+	case "dry-run":
+		if err := runDryRun(ctx, cfg, *hour, *dryLimit); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(2)
+		}
+	default: // "run"
+		if err := runScheduler(ctx, cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(2)
+		}
 	}
 }
 
@@ -145,4 +158,42 @@ func formatDate(p papers.Paper) string {
 		return "unknown"
 	}
 	return p.Date.Format("2006-01-02")
+}
+
+// runDryRun wires the full pipeline and calls RunOnce once, then exits.
+// MOCK_MOOD env var (or real Spotify) determines the mode.
+// No emails are sent because DryRun=true is enforced here.
+func runDryRun(ctx context.Context, cfg *config.Config, hour, paperLimit int) error {
+	// Force dry-run regardless of the .env setting.
+	cfg.DryRun = true
+
+	client := mood.NewClient(cfg)
+	detector := mood.NewDetector(client)
+	fetcher := papers.NewLimitedFetcher(papers.NewFetcher(), paperLimit)
+	gen := briefing.NewGenerator(cfg.AnthropicAPIKey)
+	sender := delivery.NewEmailSender(cfg)
+
+	sched, err := scheduler.New(cfg, detector, fetcher, gen, sender)
+	if err != nil {
+		return fmt.Errorf("dry-run: %w", err)
+	}
+
+	fmt.Printf("=== Beacon / dry-run (hour=%d, papers=%d) ===\n\n", hour, paperLimit)
+	return sched.RunOnce(ctx, hour)
+}
+
+// runScheduler starts the production cron loop (blocking until ctx is done).
+func runScheduler(ctx context.Context, cfg *config.Config) error {
+	client := mood.NewClient(cfg)
+	detector := mood.NewDetector(client)
+	fetcher := papers.NewFetcher()
+	gen := briefing.NewGenerator(cfg.AnthropicAPIKey)
+	sender := delivery.NewEmailSender(cfg)
+
+	sched, err := scheduler.New(cfg, detector, fetcher, gen, sender)
+	if err != nil {
+		return fmt.Errorf("scheduler: %w", err)
+	}
+
+	return sched.Start(ctx)
 }

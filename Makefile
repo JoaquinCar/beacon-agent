@@ -21,8 +21,10 @@ lint:
 	golangci-lint run
 
 # Full pipeline dry run — fetches papers, generates briefing, prints to stdout (no send)
+# Use HOUR=21 to simulate the 9pm run. MOCK_MOOD=HIGH_BPM|NORMAL overrides Spotify.
+# Use PAPERS=N to limit how many papers Claude processes (default 3, saves API credits).
 dry-run:
-	DRY_RUN=true go run cmd/beacon/main.go --cmd=run
+	go run cmd/beacon/main.go --cmd=dry-run --hour=$(or $(HOUR),9) --papers=$(or $(PAPERS),3)
 
 # Test Spotify mood detection — prints current track, BPM, genres, and MoodLevel
 test-mood:
