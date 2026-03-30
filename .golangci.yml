@@ -20,9 +20,6 @@ linters-settings:
       - name: exported
         disabled: true  # don't require doc comments on all exported symbols yet
 
-  noctx:
-    # all http calls in this codebase use NewRequestWithContext
-
 issues:
   exclude-rules:
     # Test files get looser rules
