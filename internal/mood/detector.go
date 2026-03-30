@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 )
 
@@ -44,7 +45,21 @@ func NewDetector(client SpotifyClient) *Detector {
 
 // Detect queries Spotify and returns a DetectResult.
 // This method never returns a non-nil error — Spotify failures default to NORMAL.
+//
+// MOCK_MOOD env var: set to "HIGH_BPM" or "NORMAL" to override Spotify for
+// dry-run and local testing without real Spotify credentials.
 func (d *Detector) Detect(ctx context.Context) (DetectResult, error) {
+	if v := os.Getenv("MOCK_MOOD"); v != "" {
+		switch strings.ToUpper(v) {
+		case "HIGH_BPM":
+			slog.Info("mood: MOCK_MOOD override", "level", "HIGH_BPM")
+			return DetectResult{Level: HIGH_BPM, Reason: "MOCK_MOOD=HIGH_BPM"}, nil
+		case "NORMAL":
+			slog.Info("mood: MOCK_MOOD override", "level", "NORMAL")
+			return DetectResult{Level: NORMAL, Reason: "MOCK_MOOD=NORMAL"}, nil
+		}
+	}
+
 	track, err := d.client.NowPlaying(ctx)
 	if err != nil {
 		slog.Warn("mood: spotify unavailable, defaulting to NORMAL", "err", err)
